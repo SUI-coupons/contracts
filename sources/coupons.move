@@ -72,7 +72,7 @@ module digital_coupons::coupons {
     }
 
 
-    fun init(witness: &mut COUPONS, ctx: &mut TxContext) {
+    fun init(witness: COUPONS, ctx: &mut TxContext) {
         let id = object::new(ctx);
         let adminCap = AdminCap { id };
         transfer::public_transfer(adminCap, tx_context::sender(ctx));
