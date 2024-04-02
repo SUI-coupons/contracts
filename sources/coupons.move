@@ -30,6 +30,13 @@ module digital_coupons::coupons {
         id: UID,
     }
 
+    struct BurnRequest has key {
+        id: UID,
+        coupon: Coupon,
+        owner: address,
+        consumer_address: address,
+    }
+
     public fun register_publisher(_: &mut AdminCap, ctx: &mut TxContext) {
         let id = object::new(ctx);
         transfer::transfer(PublisherCap { id }, tx_context::sender(ctx));
@@ -69,6 +76,35 @@ module digital_coupons::coupons {
             };
             ofield::add(&mut campaign.id, CouponName {}, coupon);
         };
+    }
+
+
+    // consume nft
+
+    fun create_burn_request(
+        coupon: Coupon,
+        consumer_address: address,
+        ctx: &mut TxContext,
+    ) {
+        let id = object::new(ctx);
+        let burnRequest = BurnRequest {
+            id,
+            coupon,
+            owner: tx_context::sender(ctx),
+            consumer_address,
+        };
+        transfer::share_object(burnRequest);
+    }
+
+    fun accept_burn_request(
+        burnRequest: &mut BurnRequest,
+        ctx: &mut TxContext,
+    ) {
+        let coupon = burnRequest.coupon;
+        let owner = burnRequest.owner;
+        let consumer_address = burnRequest.consumer_address;
+        assert!(consumer_address, tx_context::sender(ctx));
+        transfer::transfer(coupon, consumer_address);
     }
 
 
