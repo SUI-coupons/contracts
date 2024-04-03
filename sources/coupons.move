@@ -1,9 +1,13 @@
 module digital_coupons::coupons {
+    use std::vector;
+
     use sui::object::{Self, ID, UID};
     use std::string::String;
     use sui::tx_context::{Self, TxContext};
     use sui::transfer::{Self, public_transfer};
-    use sui::dynamic_object_field as ofield;   
+    use sui::dynamic_object_field as ofield;  
+    use sui::dynamic_field as dfield; 
+    use sui::clock::{Self, Clock};
 
     struct COUPONS has drop {} 
 
@@ -11,10 +15,12 @@ module digital_coupons::coupons {
         id: UID,
         itemDiscount: String, // fashion or household items
         discount: u8, // maximum 200
-        expirationDate: u256, // unix timestamp
+        expirationDate: u64, // unix timestamp
     }
 
     struct CouponName has copy, drop, store {}
+
+    struct ComsumerName has copy, drop, store {}
 
     struct Campain has key, store {
         id: UID,
@@ -28,6 +34,7 @@ module digital_coupons::coupons {
 
     struct PublisherCap has key {
         id: UID,
+        consumers: vector<address>
     }
 
     struct BurnRequest has key {
@@ -37,9 +44,15 @@ module digital_coupons::coupons {
         consumer_address: address,
     }
 
+    // ========== create, mint ==========
+
     public fun register_publisher(_: &mut AdminCap, ctx: &mut TxContext) {
         let id = object::new(ctx);
-        transfer::transfer(PublisherCap { id }, tx_context::sender(ctx));
+        transfer::transfer(PublisherCap { id, consumers: vector::empty() }, tx_context::sender(ctx));
+    }
+
+    public fun register_consumer(publisher: &mut PublisherCap, consumer_address: address, ctx: &mut TxContext) {
+        vector::push_back(&mut publisher.consumers, consumer_address);
     }
 
     public fun create_new_campain(
@@ -60,8 +73,8 @@ module digital_coupons::coupons {
         campaign: &mut Campain,
         itemDiscount: String,
         discount: u8,
-        expirationDate: u256,
-        quantity: u256,
+        expirationDate: u64,
+        quantity: u16,
         ctx: &mut TxContext,
     ) {
         let i = 0;
@@ -78,10 +91,9 @@ module digital_coupons::coupons {
         };
     }
 
+    // ========== consume coupons ==========
 
-    // consume nft
-
-    fun create_burn_request(
+    public fun create_burn_request(
         coupon: Coupon,
         consumer_address: address,
         ctx: &mut TxContext,
@@ -96,21 +108,49 @@ module digital_coupons::coupons {
         transfer::share_object(burnRequest);
     }
 
-    fun accept_burn_request(
-        burnRequest: &mut BurnRequest,
+    public fun accept_burn_request(
+        burnRequest: BurnRequest,
+        clock: &Clock,
         ctx: &mut TxContext,
     ) {
-        let coupon = burnRequest.coupon;
-        let owner = burnRequest.owner;
-        let consumer_address = burnRequest.consumer_address;
-        assert!(consumer_address, tx_context::sender(ctx));
-        transfer::transfer(coupon, consumer_address);
+        let BurnRequest {
+            id,
+            coupon,
+            owner,
+            consumer_address,
+        }  = burnRequest;
+        let sender = tx_context::sender(ctx);
+        assert!(consumer_address == sender, 1);
+        assert!(clock::timestamp_ms(clock) < coupon.expirationDate, 1);
+        object::delete(id);
+        let Coupon {
+            id,
+            itemDiscount,
+            discount,
+            expirationDate,
+        } = coupon;
+        object::delete(id);
     }
 
+    public fun cancel_burn_request(
+        burnRequest: BurnRequest,
+        ctx: &mut TxContext,
+    ) {
+        let BurnRequest { id, coupon, owner, consumer_address } = burnRequest;
+        let sender = tx_context::sender(ctx);
+        assert!(owner == sender, 1);
+        object::delete(id);
+        transfer::public_transfer(coupon, owner);
+    }
 
-    fun init(witness: COUPONS, ctx: &mut TxContext) {
+    fun init(_witness: COUPONS, ctx: &mut TxContext) {
         let id = object::new(ctx);
         let adminCap = AdminCap { id };
         transfer::public_transfer(adminCap, tx_context::sender(ctx));
+    }
+
+    #[test_only]
+    public fun init_for_testing(ctx: &mut TxContext) {
+        init(COUPONS {}, ctx);
     }
 }
