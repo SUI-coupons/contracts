@@ -5,6 +5,8 @@ module digital_coupons::rule {
     use sui::tx_context::{TxContext};
     use sui::transfer::{Self};
 
+    use digital_coupons::coupons::{Self, Coupon};
+
     const EInsufficientAmount: u64 = 0;
 
     struct Rule has drop {}
@@ -20,9 +22,9 @@ module digital_coupons::rule {
         transfer_policy::add_rule(Rule {}, policy, cap, Config { amount_bp })
     }
 
-    public fun pay<T>(
-        policy: &mut TransferPolicy<T>,
-        request: &mut TransferRequest<T>,
+    public fun payFee(
+        policy: &mut TransferPolicy<Coupon>,
+        request: &mut TransferRequest<Coupon>,
         payment: &mut Coin<SUI>,
         ctx: &mut TxContext
     ) {

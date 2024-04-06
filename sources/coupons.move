@@ -11,8 +11,9 @@ module digital_coupons::coupons {
     use sui::package::{Self, Publisher};
     use sui::coin::{Self, Coin};
     use sui::sui::{SUI};
+    use sui::kiosk::{Self, Kiosk};
 
-    use digital_coupons::rule;
+    use digital_coupons::rule::{Self};
 
     const EAlreadyPublisher: u64 = 0;
     const ENotPublisher: u64 = 1;
@@ -152,6 +153,10 @@ module digital_coupons::coupons {
         }
     }
 
+    public fun claim_coupons(coupons: Coupon, ctx: &mut TxContext) {
+        transfer::transfer(coupons, tx_context::sender(ctx));
+    }
+
     public fun create_burn_request(currentState: &State, clock: &Clock, coupon: Coupon, seller: &address, ctx: &mut TxContext) {
         if (!is_seller(currentState, seller, &coupon.publisher)) {
             abort ENotSeller
@@ -195,8 +200,9 @@ module digital_coupons::coupons {
         transfer::public_transfer(policy_cap, tx_context::sender(ctx));
     }
 
-    public fun buy_coupon(coupon: &Coupon, payment: u64, from: ID): TransferRequest<Coupon> {
-        transfer_policy::new_request<Coupon>(object::id(coupon), payment, from)
+    public fun buy_coupon(kiosk: &mut Kiosk, id: ID, payment: Coin<SUI>): (Coupon, TransferRequest<Coupon>) {
+        let (inner, request) = kiosk::purchase<Coupon>(kiosk, id, payment);
+        (inner, request)        
     }
 
     public fun confirm_transfer_request(
