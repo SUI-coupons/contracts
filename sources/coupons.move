@@ -12,6 +12,7 @@ module digital_coupons::coupons {
     use sui::coin::{Self, Coin};
     use sui::sui::{SUI};
     use sui::kiosk::{Self, Kiosk};
+    use sui::dynamic_object_field::{Self};
 
     use digital_coupons::rule::{Self};
 
@@ -21,25 +22,30 @@ module digital_coupons::coupons {
     const ENotInvalidSeller: u64 = 3;
     const ENotCouponOwner: u64 = 4;
     const EExpiredCoupon: u64 = 5;
+    const EAlreadySeller: u64 = 6;
+    const EDiscountInvalid: u64 = 7;
 
     struct COUPONS has drop {} 
 
     struct Coupon has key, store {
         id: UID,
+        brandName: String, // brand name
         itemDiscount: String, // fashion or household items
         discount: u8, // maximum 200
         expirationDate: u64, // unix timestamp
         publisher: address, // publisher address of the coupon
+        imageURI: String, // image URI of the coupon
     }
 
     struct AdminCap has key, store {
         id: UID,
     }
 
-    struct State has key, store {
+    struct State has key {
         id: UID,
         publisherList: vector<address>,
         sellerList: Table<address, vector<address>>,
+        availableCoupons: vector<address>,
     }
 
     struct BurnRequest has key, store {
@@ -85,6 +91,9 @@ module digital_coupons::coupons {
         if (!is_publisher(currentState, &sender)) {
             abort ENotPublisher
         };
+        if (is_seller(currentState, &seller, &sender)) {
+            abort EAlreadySeller
+        };
         let sellerListMut = &mut currentState.sellerList;
         let sellerList = table::borrow_mut<address, vector<address>>(sellerListMut, sender);
         vector::push_back(sellerList, seller);
@@ -107,48 +116,56 @@ module digital_coupons::coupons {
 
     // =========================== Coupon ===========================
 
-    fun create_shared_coupon(itemDiscount: String, discount: u8, expirationDate: u64, ctx: &mut TxContext) {
+    fun create_shared_coupon(currentState: &mut State, brandName: String, itemDiscount: String, discount: u8, expirationDate: u64, imageURI: String, ctx: &mut TxContext) {
         let coupon = Coupon {
             id: object::new(ctx),
+            brandName: brandName,
             itemDiscount: itemDiscount,
             discount: discount,
             expirationDate: expirationDate,
+            imageURI: imageURI,
             publisher: tx_context::sender(ctx),
         };
+        let coupon_address = object::uid_to_address(&coupon.id);
+        vector::push_back(&mut currentState.availableCoupons, coupon_address);
         transfer::share_object(coupon);
     }
 
-    public fun create_shared_coupons(currentState: &mut State, itemDiscount: String, discount: u8, expirationDate: u64, quantity: u64, ctx: &mut TxContext) {
+    public fun create_shared_coupons(currentState: &mut State, brandName: String, itemDiscount: String, discount: u8, expirationDate: u64, imageURI: String, quantity: u64, ctx: &mut TxContext) {
         let sender = tx_context::sender(ctx);
         if (!is_publisher(currentState, &sender)) {
             abort ENotPublisher
         };
+        assert!(discount % 5 == 0, EDiscountInvalid);
         let i = 0;
         while (i < quantity) {
-            create_shared_coupon(itemDiscount, discount, expirationDate, ctx);
+            create_shared_coupon(currentState, brandName, itemDiscount, discount, expirationDate, imageURI, ctx);
             i = i + 1;
         }
     }
 
-    fun create_private_coupon(itemDiscount: String, discount: u8, expirationDate: u64, ctx: &mut TxContext) {
+    fun create_private_coupon(brandName: String, itemDiscount: String, discount: u8, expirationDate: u64, imageURI: String, ctx: &mut TxContext) {
         let coupon = Coupon {
             id: object::new(ctx),
+            brandName,
             itemDiscount: itemDiscount,
             discount: discount,
             expirationDate: expirationDate,
+            imageURI: imageURI,
             publisher: tx_context::sender(ctx),
         };
         transfer::transfer(coupon, tx_context::sender(ctx));
     }
 
-    public fun create_private_coupons(currentState: &mut State, itemDiscount: String, discount: u8, expirationDate: u64, quantity: u64, ctx: &mut TxContext) {
+    public fun create_private_coupons(currentState: &mut State, brandName: String, itemDiscount: String, discount: u8, expirationDate: u64, imageURI: String, quantity: u64, ctx: &mut TxContext) {
         let sender = tx_context::sender(ctx);
         if (!is_publisher(currentState, &sender)) {
             abort ENotPublisher
         };
+        assert!(discount % 5 == 0, EDiscountInvalid);
         let i = 0;
         while (i < quantity) {
-            create_private_coupon(itemDiscount, discount, expirationDate, ctx);
+            create_private_coupon(brandName, itemDiscount, discount, expirationDate, imageURI, ctx);
             i = i + 1;
         }
     }
@@ -178,7 +195,7 @@ module digital_coupons::coupons {
         if (tx_context::sender(ctx) != seller) {
             abort ENotInvalidSeller
         };
-        let Coupon { id: couponID, itemDiscount, discount, expirationDate, publisher } = coupon;
+        let Coupon { id: couponID, brandName, itemDiscount, discount, expirationDate, publisher, imageURI } = coupon;
         object::delete(couponID);
         object::delete(burnRequestId);
     }
@@ -215,6 +232,10 @@ module digital_coupons::coupons {
 
     // =========================== Init ===========================
 
+    public fun test(_: &mut AdminCap, currentState: &mut State, publisher: address): u64 {
+        1 + 1
+    }
+
     fun init(_: COUPONS, ctx: &mut TxContext) {
         let adminCap = AdminCap { id: object::new(ctx) };
         transfer::public_transfer(adminCap, tx_context::sender(ctx));
@@ -225,10 +246,16 @@ module digital_coupons::coupons {
             id: object::new(ctx),
             publisherList: emptyVec,
             sellerList: emptyTable,
+            availableCoupons: vector::empty<address>(),
         };
         transfer::share_object(state);
 
         let pub = package::claim(_, ctx);
         transfer::public_transfer(pub, tx_context::sender(ctx));
+    }
+
+    #[test_only]
+    public fun init_for_testing(ctx: &mut TxContext) {
+        init(COUPONS {}, ctx);
     }
 }
