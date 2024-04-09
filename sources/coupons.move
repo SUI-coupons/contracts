@@ -170,8 +170,23 @@ module digital_coupons::coupons {
         }
     }
 
-    public fun claim_coupons(coupons: Coupon, ctx: &mut TxContext) {
-        transfer::transfer(coupons, tx_context::sender(ctx));
+    public fun claim_coupon(coupon: Coupon, currentState: &mut State, ctx: &mut TxContext) {
+        let Coupon { id, brandName, itemDiscount, discount, expirationDate, publisher, imageURI } = coupon;
+        let availableCoupons = &mut currentState.availableCoupons;
+        let (is_coupon, index) = vector::index_of(availableCoupons, &object::uid_to_address(&id));
+        assert!(is_coupon == true, EExpiredCoupon);
+        vector::remove(availableCoupons, index);
+        object::delete(id);
+        let newCoupon = Coupon {
+            id: object::new(ctx),
+            brandName: brandName,
+            itemDiscount: itemDiscount,
+            discount: discount,
+            expirationDate: expirationDate,
+            publisher: publisher,
+            imageURI: imageURI,
+        };
+        transfer::transfer(newCoupon, tx_context::sender(ctx));
     }
 
     public fun create_burn_request(currentState: &State, clock: &Clock, coupon: Coupon, seller: &address, ctx: &mut TxContext) {
