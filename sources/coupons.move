@@ -11,7 +11,7 @@ module digital_coupons::coupons {
     use sui::package::{Self, Publisher};
     use sui::coin::{Self, Coin};
     use sui::sui::{SUI};
-    use sui::kiosk::{Self, Kiosk};
+    use sui::kiosk::{Self, Kiosk, KioskOwnerCap};
     use sui::dynamic_object_field::{Self};
 
     use digital_coupons::rule::{Self};
@@ -24,6 +24,7 @@ module digital_coupons::coupons {
     const EExpiredCoupon: u64 = 5;
     const EAlreadySeller: u64 = 6;
     const EDiscountInvalid: u64 = 7;
+    const ECouponNotListed: u64 = 8;
 
     struct COUPONS has drop {} 
 
@@ -46,6 +47,7 @@ module digital_coupons::coupons {
         publisherList: vector<address>,
         sellerList: Table<address, vector<address>>,
         availableCoupons: vector<address>,
+        listedCoupons: vector<address>,
     }
 
     struct BurnRequest has key, store {
@@ -244,6 +246,33 @@ module digital_coupons::coupons {
         transfer_policy::confirm_request<Coupon>(policy, request);
     }
 
+    public fun place_and_list_coupon(
+        currentState: &mut State,
+        kiosk: &mut Kiosk, 
+        cap: &KioskOwnerCap, 
+        coupon: Coupon,
+        price: u64
+    ) {
+        let coupon_address = object::uid_to_address(&coupon.id);
+        vector::push_back(&mut currentState.listedCoupons, coupon_address);
+        kiosk::place_and_list<Coupon>(kiosk, cap, coupon, price);
+    }
+
+    public fun delist_and_take_coupon(
+        currentState: &mut State,
+        kiosk: &mut Kiosk, 
+        cap: &KioskOwnerCap, 
+        id: ID,
+    ) : Coupon {
+        let coupon_address = object::id_to_address(&id);
+        let (is_coupon, index) = vector::index_of(&currentState.listedCoupons, &coupon_address);
+        if (!is_coupon) {
+            abort ECouponNotListed
+        };
+        vector::remove(&mut currentState.listedCoupons, index);
+        kiosk::delist<Coupon>(kiosk, cap, id);
+        kiosk::take<Coupon>(kiosk, cap, id)
+    }
 
     // =========================== Init ===========================
 
@@ -262,6 +291,7 @@ module digital_coupons::coupons {
             publisherList: emptyVec,
             sellerList: emptyTable,
             availableCoupons: vector::empty<address>(),
+            listedCoupons: vector::empty<address>(),
         };
         transfer::share_object(state);
 
