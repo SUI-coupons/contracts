@@ -263,7 +263,8 @@ module digital_coupons::coupons {
         kiosk: &mut Kiosk, 
         cap: &KioskOwnerCap, 
         id: ID,
-    ) : Coupon {
+        ctx: &mut TxContext
+    ) {
         let coupon_address = object::id_to_address(&id);
         let (is_coupon, index) = vector::index_of(&currentState.listedCoupons, &coupon_address);
         if (!is_coupon) {
@@ -271,7 +272,8 @@ module digital_coupons::coupons {
         };
         vector::remove(&mut currentState.listedCoupons, index);
         kiosk::delist<Coupon>(kiosk, cap, id);
-        kiosk::take<Coupon>(kiosk, cap, id)
+        let coupon = kiosk::take<Coupon>(kiosk, cap, id);
+        transfer::transfer(coupon, tx_context::sender(ctx));
     }
 
     // =========================== Init ===========================
