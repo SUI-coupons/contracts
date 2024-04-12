@@ -14,8 +14,6 @@ module digital_coupons::coupons {
     use sui::kiosk::{Self, Kiosk, KioskOwnerCap};
     use sui::dynamic_object_field::{Self};
 
-    use digital_coupons::rule::{Self};
-
     const EAlreadyPublisher: u64 = 0;
     const ENotPublisher: u64 = 1;
     const ENotSeller: u64 = 2;
@@ -223,27 +221,10 @@ module digital_coupons::coupons {
     public fun cancel_burn_request(burnRequest: BurnRequest, ctx: &mut TxContext) {
         let BurnRequest { id: burnRequestId, coupon, owner, seller } = burnRequest;
         if (tx_context::sender(ctx) != owner) {
-            abort ENotCouponOwnerbuy_coupon
-    }
-
-    // =========================== Transfer Policy ===========================
-
-    public fun create_transfer_policy(pub: &Publisher, ctx: &mut TxContext) {
-        let (policy, policy_cap) = transfer_policy::new<Coupon>(pub, ctx);
-        transfer::public_share_object(policy);
-        transfer::public_transfer(policy_cap, tx_context::sender(ctx));
-    }
-
-    public fun buy_coupon(kiosk: &mut Kiosk, id: ID, payment: Coin<SUI>): (Coupon, TransferRequest<Coupon>) {
-        let (inner, request) = kiosk::purchase<Coupon>(kiosk, id, payment);
-        (inner, request)        
-    }
-
-    public fun confirm_transfer_request(
-        policy: &TransferPolicy<Coupon>, 
-        request: TransferRequest<Coupon>, 
-    ) {
-        transfer_policy::confirm_request<Coupon>(policy, request);
+            abort ENotCouponOwner
+        };
+        object::delete(burnRequestId);
+        transfer::transfer(coupon, tx_context::sender(ctx));
     }
 
     public fun place_and_list_coupon(
@@ -262,14 +243,9 @@ module digital_coupons::coupons {
         kiosk::place_and_list<Coupon>(kiosk, cap, coupon, price);
     }
 
-    public fun delist_and_take_coupon(
-        currentState: &mut State,
-        kiosk: &mut Kiosk, 
-        cap: &KioskOwnerCap, 
-        id: ID,
-        ctx: &mut TxContext
-    ) {
-        let coupon_address = object::id_to_address(&id);
+    // do not call it from outside of package
+    public fun remove_state_coupon(currentState: &mut State, id: &ID) {
+        let coupon_address = object::id_to_address(id);
         let (is_coupon, index) = vector::index_of(&currentState.listedCoupons, &coupon_address);
         if (!is_coupon) {
             abort ECouponNotListed
@@ -278,17 +254,22 @@ module digital_coupons::coupons {
         vector::remove(&mut currentState.listedPrice, index);
         vector::remove(&mut currentState.listedOwner, index);
         vector::remove(&mut currentState.listedKiosk, index);
+    }
+
+    public fun delist_and_take_coupon(
+        currentState: &mut State,
+        kiosk: &mut Kiosk, 
+        cap: &KioskOwnerCap, 
+        id: ID,
+        ctx: &mut TxContext
+    ) {
+        remove_state_coupon(currentState, &id);
         kiosk::delist<Coupon>(kiosk, cap, id);
         let coupon = kiosk::take<Coupon>(kiosk, cap, id);
         transfer::transfer(coupon, tx_context::sender(ctx));
     }
 
     // =========================== Init ===========================
-
-    public fun test(kiosk: &mut Kiosk, id: ID, payment: Coin<SUI>, ctx: &mut TxContext): (u64, u64) {
-        transfer::public_transfer(payment, tx_context::sender(ctx));
-        (1 + 1, 1 + 1)
-    }
 
     fun init(_: COUPONS, ctx: &mut TxContext) {
         let adminCap = AdminCap { id: object::new(ctx) };
