@@ -22,7 +22,7 @@ module digital_coupons::rule {
         transfer_policy::add_rule(Rule {}, policy, cap, Config { amount_bp })
     }
 
-    public fun payFee(
+    public fun payFee (
         policy: &mut TransferPolicy<Coupon>,
         request: &mut TransferRequest<Coupon>,
         payment: &mut Coin<SUI>,

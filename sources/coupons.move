@@ -48,6 +48,9 @@ module digital_coupons::coupons {
         sellerList: Table<address, vector<address>>,
         availableCoupons: vector<address>,
         listedCoupons: vector<address>,
+        listedPrice: vector<u64>,
+        listedOwner: vector<address>,
+        listedKiosk: vector<address>,
     }
 
     struct BurnRequest has key, store {
@@ -220,10 +223,7 @@ module digital_coupons::coupons {
     public fun cancel_burn_request(burnRequest: BurnRequest, ctx: &mut TxContext) {
         let BurnRequest { id: burnRequestId, coupon, owner, seller } = burnRequest;
         if (tx_context::sender(ctx) != owner) {
-            abort ENotCouponOwner
-        };
-        object::delete(burnRequestId);
-        transfer::transfer(coupon, owner);
+            abort ENotCouponOwnerbuy_coupon
     }
 
     // =========================== Transfer Policy ===========================
@@ -251,10 +251,14 @@ module digital_coupons::coupons {
         kiosk: &mut Kiosk, 
         cap: &KioskOwnerCap, 
         coupon: Coupon,
-        price: u64
+        price: u64,
+        ctx: &mut TxContext
     ) {
         let coupon_address = object::uid_to_address(&coupon.id);
         vector::push_back(&mut currentState.listedCoupons, coupon_address);
+        vector::push_back(&mut currentState.listedPrice, price);
+        vector::push_back(&mut currentState.listedOwner, tx_context::sender(ctx));
+        vector::push_back(&mut currentState.listedKiosk, object::id_address(kiosk));
         kiosk::place_and_list<Coupon>(kiosk, cap, coupon, price);
     }
 
@@ -271,6 +275,9 @@ module digital_coupons::coupons {
             abort ECouponNotListed
         };
         vector::remove(&mut currentState.listedCoupons, index);
+        vector::remove(&mut currentState.listedPrice, index);
+        vector::remove(&mut currentState.listedOwner, index);
+        vector::remove(&mut currentState.listedKiosk, index);
         kiosk::delist<Coupon>(kiosk, cap, id);
         let coupon = kiosk::take<Coupon>(kiosk, cap, id);
         transfer::transfer(coupon, tx_context::sender(ctx));
@@ -278,8 +285,9 @@ module digital_coupons::coupons {
 
     // =========================== Init ===========================
 
-    public fun test(_: &mut AdminCap, currentState: &mut State, publisher: address): u64 {
-        1 + 1
+    public fun test(kiosk: &mut Kiosk, id: ID, payment: Coin<SUI>, ctx: &mut TxContext): (u64, u64) {
+        transfer::public_transfer(payment, tx_context::sender(ctx));
+        (1 + 1, 1 + 1)
     }
 
     fun init(_: COUPONS, ctx: &mut TxContext) {
@@ -294,6 +302,9 @@ module digital_coupons::coupons {
             sellerList: emptyTable,
             availableCoupons: vector::empty<address>(),
             listedCoupons: vector::empty<address>(),
+            listedPrice: vector::empty<u64>(),
+            listedOwner: vector::empty<address>(),
+            listedKiosk: vector::empty<address>()
         };
         transfer::share_object(state);
 
